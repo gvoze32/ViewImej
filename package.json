@@ -1,0 +1,11 @@
+{
+    "name": "view-image",
+    "version": "6.0.0",
+    "private": true,
+    "description": "Re-implements Google Images' \"View image\" and \"Search by image\" buttons (extension + userscript).",
+    "license": "MIT",
+    "type": "module",
+    "scripts": {
+        "build": "node scripts/build.mjs"
+    }
+}
