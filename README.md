@@ -1,102 +1,73 @@
 # ViewImej
 
-Brings back the **View image** and **Search by image** buttons in Google Images. Available as a
-browser extension (Chrome/Edge/Brave/Opera, Firefox) and as a userscript.
+Brings back the **View image** and **Search by image** buttons in Google Images.
+**View image** opens the original image, not Google's `encrypted-tbn0.gstatic.com` thumbnail.
 
-ViewImej is a fork of [bijij/ViewImage](https://github.com/bijij/ViewImage) ("View Image"), which is no longer
-maintained. It also covers the userscript forks by
-[bijij](https://gist.github.com/bijij/58cc8cfc859331e4cf80210528a7b255) and
-[ner00](https://gist.github.com/ner00/ec9ae47e202b8e99f19be44a5af6baf3).
-
-## What changed
-
-| Problem (upstream issue / gist report) | Fix |
-| --- | --- |
-| Buttons gone after Google's 2025–2026 redesign (#285, #287, #288, #292, #294) | Class names are no longer used to find things. The script finds the preview's **Visit** button by structure (external link + icon + label) and takes the image id (`tbnid`) from the data Google puts in the page. |
-| **View image** opens the `encrypted-tbn0.gstatic.com` thumbnail instead of the original | The preview `<img>` shows a thumbnail until the original loads, and it never loads when the source site blocks hotlinking. The original URL is now read by `tbnid` from Google's `/imgres?imgurl=…&tbnid=…` links and from its inline result JSON. **View image** always points at the original. |
-| Button shows up for a moment, then disappears (#286) | A `MutationObserver` puts the buttons back every time Google re-renders the panel. |
-| Middle-click or Ctrl-click on the button opens the source website, or breaks the next click | Google's delegated click/mousedown handlers no longer receive events from the buttons, so every click type just follows the `href`. |
-| Results loaded by infinite scroll, `udm=2`/`udm=imgs`/`tbm=isch` URLs, the retired country domains | Runs on every `google.<tld>/search*` page. The legacy "basic" image layout (`#imgrc=`, `data-ou`) also works. |
-| `runtime.getPlatformInfo().nacl_arch` is deprecated (#294) | Uses `info.arch`. The background service worker is gone; it only existed to store default options. |
-| Search by image was removed upstream | Brought back through Google Lens (`lens.google.com/uploadbyurl`). It can be turned off. |
-| The "original" Google recorded is not an image you can open | Before showing **View image**, the original is loaded once in the background as an image, with the same referrer policy the button uses. The same check runs for every site; there are no per-site rules. If it loads, the button appears, usually within 0.1–1.5 s. If it does not load, **View image** is replaced by a separately labelled **View thumbnail** button that opens Google's thumbnail, and **Search by image** uses that thumbnail too. A failed check is retried once, because the first request can be shared with Google's own preview request, which sends a google.com Referer. Results with no URL at all (`x-raw-image:///…`) go straight to the thumbnail. Turn the thumbnail off with the "View thumbnail" option (userscript: `thumbnailFallback: false`). |
-| Some CDNs return 403 when the Referer is google.com (e.g. Bilibili) | "Hide referrer" is on by default (`rel="noreferrer"`). |
-
-Results that end up with **View thumbnail** in practice (checked on about 110 large international and Indonesian sites):
-
-- Instagram, Facebook, Threads and TikTok: Google records crawler endpoints that redirect to the post page or return 403.
-- Signed CDN links whose signature has expired, which is common on Tokopedia.
-- Links that no longer work at the source (Pexels `/download/` 404s) and sites that block direct image requests (Wallpaperflare, Weibo).
-
-### Known limits
-
-- Reddit (`i.redd.it`), Imgur (`i.imgur.com`) and Giphy load fine as images but redirect a directly opened tab to their own viewer page.
-- Some CDNs send images as `application/octet-stream` (seen with CNN and AP). They load as images, but the browser downloads them when opened in a tab.
-- Plain `http://` originals are not checked, because an https page blocks or upgrades them and the check would give a wrong result.
+A maintained fork of [View Image](https://github.com/bijij/ViewImage).
 
 ## Install
 
-Build: `npm run build` (needs Node 18+ and `zip`). Extensions go to `dist/`; the userscript is written to
-`userscript/viewimej.user.js`, which is committed so the install/update link below always serves the
-latest `main`. Run the build before committing changes to `src/core.js`.
+Use **one** of these. Turn off the old View Image extension or userscript first.
 
-### Userscript
+### Userscript (all browsers, including Safari)
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
-2. Open <https://raw.githubusercontent.com/gvoze32/ViewImej/main/userscript/viewimej.user.js>; the
-   manager offers to install it and later updates from the same URL.
-3. To change settings, edit the `VIEW_IMAGE_SETTINGS` block at the top of the script.
+1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/),
+   or [Userscripts](https://apps.apple.com/app/userscripts/id1463298887) for Safari.
+2. Open **[viewimej.user.js](https://raw.githubusercontent.com/gvoze32/ViewImej/main/userscript/viewimej.user.js)**,
+   then click **Install**.
 
-Turn off the old View Image extension and the old View Image userscripts. If two copies run, the second
-one does nothing and logs a console warning.
+Updates arrive automatically through the manager.
 
-### Chrome / Edge / Brave / Opera
+### Chrome, Edge, Brave, Opera
 
-Download `viewimej-chrome-<version>.zip` from [Releases](https://github.com/gvoze32/ViewImej/releases/latest)
-and unzip it, or build it yourself. Then open `chrome://extensions` → turn on Developer mode → **Load unpacked** →
-choose the unzipped folder (or `dist/chrome`).
+1. Download `viewimej-chrome-<version>.zip` from [Releases](https://github.com/gvoze32/ViewImej/releases/latest), then unzip it.
+2. Open `chrome://extensions` and turn on **Developer mode**.
+3. Click **Load unpacked**, then choose the unzipped folder.
 
-### Firefox (140+)
+### Firefox 140+
 
-For a quick test, open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick
-`manifest.json` from the unzipped `viewimej-firefox-<version>.zip` (or `dist/firefox`). To install it
-permanently, sign the zip on AMO (add-on id `viewimej@gvoze32`, set in `scripts/build.mjs`).
+1. Download `viewimej-firefox-<version>.zip` from [Releases](https://github.com/gvoze32/ViewImej/releases/latest), then unzip it.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on**, then pick `manifest.json` from the unzipped folder.
 
-### Updates
+A temporary add-on is removed when Firefox restarts. A permanent install needs the add-on signed through
+[AMO](https://addons.mozilla.org/developers/).
 
-- **Userscript:** the manager checks `@updateURL` on its own; Tampermonkey checks every 24 hours by default.
-- **Extension loaded unpacked or from a zip:** the browser does not update it. Click **Check for updates**
-  in the popup. It compares the installed version with `package.json` on `main` and, when a newer version
-  exists, links to the latest release. Store installs (Chrome Web Store, AMO) are updated by the store.
+### Updating the extension
 
-### Releasing
+Click the extension icon, then **Check for updates**. If a newer version exists, download it and load it the
+same way you installed it.
 
-1. Bump `version` in `package.json`, then run `npm run build`.
-2. Commit (including `userscript/viewimej.user.js`) and push to `main`.
-3. Run `gh release create v<version> dist/viewimej-*-<version>.zip userscript/viewimej.user.js`.
+## Settings
 
-## Layout
+- **Extension:** click the extension icon, then **Options**.
+- **Userscript:** edit the `VIEW_IMAGE_SETTINGS` block at the top of the script.
+
+| Setting | Default |
+| --- | --- |
+| Open in a new tab | on |
+| Hide referrer | on |
+| Show **Search by image** | on |
+| Show **View thumbnail** when the original can't be opened | on |
+| Custom button text | off |
+
+**View thumbnail** appears instead of **View image** when the original doesn't load as an image. This happens
+for Instagram, Facebook, TikTok and Threads results, expired links, and sites that block direct image links.
+
+## Build from source
 
 ```
-src/core.js            shared logic (extension + userscript)
-extension/             extension assets: options/popup pages, locales, icons, content-script glue
-scripts/build.mjs      generates manifests (Chrome, Firefox) and the userscript from the sources above
-scripts/tlds.json      Google domains to match
-userscript/            built userscript (generated by the build, committed for the install/update URL)
+npm run build
 ```
 
-## How the original URL is found
+This needs Node 18+ and `zip`. The extensions go to `dist/` and the userscript to `userscript/viewimej.user.js`.
 
-For the preview that is open, the tbnid comes from Google's `<link href="/imgres?…&tbnid=">`, from the
-preview card's `jsdata`, or from the `#sv=` / `#imgrc=` hash. The original is then the first
-of these that exists:
+To release a new version:
 
-1. `imgurl` from an `/imgres?…&tbnid=<id>` link or anchor
-2. the `[0,"<id>",[thumb,h,w],[original,h,w]…]` entry in Google's inline result data
-3. `data-ou` on the tile (legacy layout)
-4. the preview `<img>`, but only once its `src` is no longer a gstatic thumbnail
-
-If none of these is available yet, no button is shown. The button is never pointed at a thumbnail.
+1. Bump `version` in `package.json`.
+2. Run the build.
+3. Commit and push.
+4. Run `gh release create v<version> dist/viewimej-*-<version>.zip userscript/viewimej.user.js`.
 
 ## Credits
 
