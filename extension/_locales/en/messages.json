@@ -15,6 +15,10 @@
         "message": "View image",
         "description": "Button for viewing image."
     },
+    "viewThumbnail": {
+        "message": "View thumbnail",
+        "description": "Button opening Google's thumbnail when the original image is not available."
+    },
     "settingsToggle_NewTab_viewImage": {
         "message": "Open \"View image\" in a new tab:",
         "description": "Settings toggle which causes images to open in new tab."
@@ -38,6 +42,10 @@
     "settingsToggle_searchByImageButton": {
         "message": "Show \"Search by image\" button:",
         "description": "Settings toggle which shows the \"Search by image\" (Google Lens) button next to \"View image\"."
+    },
+    "settingsToggle_thumbnailFallback": {
+        "message": "Show \"View thumbnail\" (Google's thumbnail) when the original image isn't available:",
+        "description": "Settings toggle for the thumbnail fallback button, shown when the original image fails to load."
     },
     "settingsToggle_buttonText": {
         "message": "Manually set button text:",

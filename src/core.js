@@ -22,6 +22,7 @@ const ViewImageCore = (() => {
     //   [0,"<id>",["<thumbnail>",h,w],["<original>",h,w]
     const DATA_ENTRY = /\[0,\\*"([\w-]{6,})\\*",\[\\*"[^"]*",\d+,\d+\],\[\\*"(https?:[^"]*?)\\*",\d+,\d+\]/g;
     const MIN_PREVIEW_SIZE = 120;
+    const PROBE_TIMEOUT_MS = 15000;
 
     const originals = new Map();
     const scannedScripts = new WeakSet();
@@ -71,10 +72,12 @@ const ViewImageCore = (() => {
         }
     };
 
+    // "x-raw-image:///<hash>" means Google has no URL for the image (it was embedded in the page);
+    // it is passed on so the thumbnail fallback can kick in.
     const imgurlFromHref = (href) => {
         try {
             const url = new URL(href, location.href).searchParams.get('imgurl');
-            return isOriginalUrl(url) ? url : null;
+            return isOriginalUrl(url) || /^x-raw-image:/.test(url || '') ? url : null;
         } catch {
             return null;
         }
@@ -261,13 +264,97 @@ const ViewImageCore = (() => {
         return button;
     };
 
-    const buttonsFor = (imageUrl) => {
-        const wanted = [{ role: 'view', text: options.viewImageText, href: imageUrl }];
-        if (options.showSearchByImage) {
+    // Google's own thumbnail of the open preview: the largest gstatic "/images?" picture in the card.
+    const previewThumbnail = (card) => {
+        let best = null;
+        let bestArea = 0;
+        for (const img of card.querySelectorAll('img')) {
+            const src = img.currentSrc || img.src;
+            const rect = img.getBoundingClientRect();
+            if (THUMB_HOST.test(src) && /\/images\?/.test(src) && rect.width * rect.height > bestArea) {
+                best = src;
+                bestArea = rect.width * rect.height;
+            }
+        }
+        return best;
+    };
+
+    // Whether an original really loads as an image, requested the way the button would open it (same
+    // referrer policy). One check for every site: endpoints that redirect to an HTML page, 403/404,
+    // expired signed links and hotlink blocks all fail to decode. Success is taken as soon as the
+    // image's dimensions are known, without waiting for large files to finish. Plain-http originals
+    // are not probed (an https page blocks or upgrades them, which would misreport them); a probe
+    // that never settles counts as ok.
+    // A failure is retried once: the browser may attach the first probe to Google's own in-flight
+    // preview request for the same URL, which carries a google.com Referer and can be refused (403)
+    // where our no-referrer request would succeed. A failed request is not reused, so the retry is
+    // a request of its own.
+    const PROBE_RETRY_MS = 500;
+    const PROBE_POLL_MS = 100;
+    const probes = new Map(); // `${referrerPolicy} ${url}` -> 'pending' | 'ok' | 'failed'
+
+    const probeOriginal = (url) => {
+        if (/^http:\/\//.test(url)) return 'ok';
+        if (!/^https:\/\//.test(url)) return 'failed'; // e.g. x-raw-image:///<hash>: Google has no URL
+        const policy = options.noReferrer ? 'no-referrer' : 'strict-origin-when-cross-origin';
+        const key = `${policy} ${url}`;
+        if (probes.has(key)) return probes.get(key);
+        probes.set(key, 'pending');
+        let img = null;
+        let poll = 0;
+        const settle = (state) => {
+            clearInterval(poll);
+            if (img) {
+                img.onload = null;
+                img.onerror = null;
+                if (state === 'ok') img.src = ''; // stop downloading once we know it is an image
+            }
+            if (probes.get(key) !== 'pending') return;
+            probes.set(key, state);
+            log('probe', state, url);
+            schedule();
+        };
+        const attempt = (retriesLeft) => {
+            if (probes.get(key) !== 'pending') return;
+            img = new Image();
+            img.onload = () => settle(img.naturalWidth > 0 ? 'ok' : 'failed');
+            img.onerror = () => {
+                clearInterval(poll);
+                if (retriesLeft > 0) setTimeout(() => attempt(retriesLeft - 1), PROBE_RETRY_MS);
+                else settle('failed');
+            };
+            img.referrerPolicy = policy;
+            img.src = url;
+            poll = setInterval(() => {
+                if (img.naturalWidth > 0) settle('ok');
+            }, PROBE_POLL_MS);
+        };
+        setTimeout(() => settle('ok'), PROBE_TIMEOUT_MS);
+        attempt(1);
+        return 'pending';
+    };
+
+    // View image once the original is confirmed to load. If it fails, offer Google's thumbnail under
+    // its own "View thumbnail" label, unless disabled; Search by image then also uses the thumbnail,
+    // which Lens accepts. While the check runs, no buttons are shown, so nothing points at a URL that
+    // turns out not to be an image.
+    const buttonsFor = (imageUrl, card) => {
+        const state = probeOriginal(imageUrl);
+        if (state === 'pending') return [];
+        const usable = state === 'ok';
+        const thumbnail = usable ? null : previewThumbnail(card);
+        const wanted = [];
+        if (usable) {
+            wanted.push({ role: 'view', text: options.viewImageText, href: imageUrl });
+        } else if (options.thumbnailFallback && thumbnail) {
+            wanted.push({ role: 'thumbnail', text: options.viewThumbnailText, href: thumbnail });
+        }
+        const searchSource = usable ? imageUrl : thumbnail;
+        if (options.showSearchByImage && searchSource) {
             wanted.push({
                 role: 'search',
                 text: options.searchByImageText,
-                href: `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imageUrl)}`,
+                href: `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(searchSource)}`,
             });
         }
         return wanted;
@@ -297,9 +384,14 @@ const ViewImageCore = (() => {
             log('original URL not resolved yet', preview.tbnid);
             return;
         }
+        const wanted = buttonsFor(imageUrl, preview.card);
+        if (!wanted.length) {
+            log('no usable image for', imageUrl);
+            return;
+        }
         const row = ensureRow(preview.visit);
         keep.add(row);
-        buttonsFor(imageUrl).forEach((want, index) => {
+        wanted.forEach((want, index) => {
             let button = row.children[index];
             const current = button && button.getAttribute(MARK) === want.role &&
                 button.getAttribute('href') === want.href && button.textContent.trim() === want.text &&
@@ -343,11 +435,14 @@ const ViewImageCore = (() => {
 
     const normalize = (raw) => ({
         ...raw,
+        thumbnailFallback: raw.thumbnailFallback !== false,
         viewImageText: String(raw.viewImageText || 'View image').trim(),
+        viewThumbnailText: String(raw.viewThumbnailText || 'View thumbnail').trim(),
         searchByImageText: String(raw.searchByImageText || 'Search by image').trim(),
     });
 
-    // options: { openInNewTab, noReferrer, showSearchByImage, viewImageText, searchByImageText, debug }
+    // options: { openInNewTab, noReferrer, showSearchByImage, thumbnailFallback, viewImageText,
+    //            viewThumbnailText, searchByImageText, debug }
     const start = (initialOptions) => {
         // Extension and userscript share the DOM; a second instance would fight over the buttons.
         if (document.documentElement.hasAttribute(`${MARK}-active`)) {

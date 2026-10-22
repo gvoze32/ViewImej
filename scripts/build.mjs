@@ -69,6 +69,7 @@ for (const locale of readdirSync(join(root, 'extension/_locales'))) {
     const messages = JSON.parse(read(`extension/_locales/${locale}/messages.json`));
     labels[locale.replace('_', '-').toLowerCase()] = {
         view: messages.viewImage?.message,
+        thumbnail: messages.viewThumbnail?.message,
         search: messages.searchImage?.message,
     };
 }
@@ -99,9 +100,11 @@ const userscript = `${header}
 /* ---- Settings: edit to taste (empty text = browser language) ---- */
 const VIEW_IMAGE_SETTINGS = {
     openInNewTab: true,
-    noReferrer: false,
+    noReferrer: true, // some CDNs (e.g. Bilibili) reject a google.com Referer
     showSearchByImage: true,
+    thumbnailFallback: true, // "View thumbnail" when the original image fails to load
     viewImageText: '',
+    viewThumbnailText: '',
     searchByImageText: '',
     debug: false,
 };
@@ -115,6 +118,7 @@ ${core}
     ViewImageCore.start({
         ...VIEW_IMAGE_SETTINGS,
         viewImageText: VIEW_IMAGE_SETTINGS.viewImageText || label.view || labels.en.view,
+        viewThumbnailText: VIEW_IMAGE_SETTINGS.viewThumbnailText || label.thumbnail || labels.en.thumbnail,
         searchByImageText: VIEW_IMAGE_SETTINGS.searchByImageText || label.search || labels.en.search,
     });
 })();

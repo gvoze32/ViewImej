@@ -1,6 +1,6 @@
 {
     "name": "viewimej",
-    "version": "6.0.0",
+    "version": "6.1.0",
     "private": true,
     "description": "Re-implements Google Images' \"View image\" and \"Search by image\" buttons (extension + userscript).",
     "license": "MIT",

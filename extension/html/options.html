@@ -27,6 +27,12 @@
     </div>
 
     <div class="toggle">
+        <span data-localise="__MSG_settingsToggle_thumbnailFallback__">Show "View thumbnail" (Google's thumbnail) when the original image isn't available:</span>
+        <input type="checkbox" id="thumbnail-fallback" />
+        <label for="thumbnail-fallback"></label>
+    </div>
+
+    <div class="toggle">
         <span data-localise="__MSG_settingsToggle_buttonText__">Manually set button text:</span>
         <input type="checkbox" id="manually-set-button-text" />
         <label for="manually-set-button-text"></label>
@@ -36,6 +42,10 @@
         <div>
             <span data-localise="__MSG_viewImage__">View image</span>
             <input type="text" id="button-text-view-image" />
+        </div>
+        <div>
+            <span data-localise="__MSG_viewThumbnail__">View thumbnail</span>
+            <input type="text" id="button-text-view-thumbnail" />
         </div>
         <div>
             <span data-localise="__MSG_searchImage__">Search by image</span>

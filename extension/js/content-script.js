@@ -9,7 +9,9 @@ const toCoreOptions = (stored) => {
         openInNewTab: options['open-in-new-tab'],
         noReferrer: options['no-referrer'],
         showSearchByImage: options['show-search-by-image'],
+        thumbnailFallback: options['thumbnail-fallback'],
         viewImageText: (manual && options['button-text-view-image']) || chrome.i18n.getMessage('viewImage'),
+        viewThumbnailText: (manual && options['button-text-view-thumbnail']) || chrome.i18n.getMessage('viewThumbnail'),
         searchByImageText: (manual && options['button-text-search-by-image']) || chrome.i18n.getMessage('searchImage'),
     };
 };

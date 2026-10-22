@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            ViewImej
 // @namespace       https://github.com/gvoze32/ViewImej
-// @version         6.0.0
+// @version         6.1.0
 // @description     Re-implements the Google Images' "View image" and "Search by image" buttons, linking the original image (not the gstatic thumbnail).
 // @author          gvoze32 (ViewImej); based on View Image by Joshua B and ner00
 // @homepageURL     https://github.com/gvoze32/ViewImej
@@ -210,9 +210,11 @@
 /* ---- Settings: edit to taste (empty text = browser language) ---- */
 const VIEW_IMAGE_SETTINGS = {
     openInNewTab: true,
-    noReferrer: false,
+    noReferrer: true, // some CDNs (e.g. Bilibili) reject a google.com Referer
     showSearchByImage: true,
+    thumbnailFallback: true, // "View thumbnail" when the original image fails to load
     viewImageText: '',
+    viewThumbnailText: '',
     searchByImageText: '',
     debug: false,
 };
@@ -242,6 +244,7 @@ const ViewImageCore = (() => {
     //   [0,"<id>",["<thumbnail>",h,w],["<original>",h,w]
     const DATA_ENTRY = /\[0,\\*"([\w-]{6,})\\*",\[\\*"[^"]*",\d+,\d+\],\[\\*"(https?:[^"]*?)\\*",\d+,\d+\]/g;
     const MIN_PREVIEW_SIZE = 120;
+    const PROBE_TIMEOUT_MS = 15000;
 
     const originals = new Map();
     const scannedScripts = new WeakSet();
@@ -291,10 +294,12 @@ const ViewImageCore = (() => {
         }
     };
 
+    // "x-raw-image:///<hash>" means Google has no URL for the image (it was embedded in the page);
+    // it is passed on so the thumbnail fallback can kick in.
     const imgurlFromHref = (href) => {
         try {
             const url = new URL(href, location.href).searchParams.get('imgurl');
-            return isOriginalUrl(url) ? url : null;
+            return isOriginalUrl(url) || /^x-raw-image:/.test(url || '') ? url : null;
         } catch {
             return null;
         }
@@ -481,13 +486,97 @@ const ViewImageCore = (() => {
         return button;
     };
 
-    const buttonsFor = (imageUrl) => {
-        const wanted = [{ role: 'view', text: options.viewImageText, href: imageUrl }];
-        if (options.showSearchByImage) {
+    // Google's own thumbnail of the open preview: the largest gstatic "/images?" picture in the card.
+    const previewThumbnail = (card) => {
+        let best = null;
+        let bestArea = 0;
+        for (const img of card.querySelectorAll('img')) {
+            const src = img.currentSrc || img.src;
+            const rect = img.getBoundingClientRect();
+            if (THUMB_HOST.test(src) && /\/images\?/.test(src) && rect.width * rect.height > bestArea) {
+                best = src;
+                bestArea = rect.width * rect.height;
+            }
+        }
+        return best;
+    };
+
+    // Whether an original really loads as an image, requested the way the button would open it (same
+    // referrer policy). One check for every site: endpoints that redirect to an HTML page, 403/404,
+    // expired signed links and hotlink blocks all fail to decode. Success is taken as soon as the
+    // image's dimensions are known, without waiting for large files to finish. Plain-http originals
+    // are not probed (an https page blocks or upgrades them, which would misreport them); a probe
+    // that never settles counts as ok.
+    // A failure is retried once: the browser may attach the first probe to Google's own in-flight
+    // preview request for the same URL, which carries a google.com Referer and can be refused (403)
+    // where our no-referrer request would succeed. A failed request is not reused, so the retry is
+    // a request of its own.
+    const PROBE_RETRY_MS = 500;
+    const PROBE_POLL_MS = 100;
+    const probes = new Map(); // `${referrerPolicy} ${url}` -> 'pending' | 'ok' | 'failed'
+
+    const probeOriginal = (url) => {
+        if (/^http:\/\//.test(url)) return 'ok';
+        if (!/^https:\/\//.test(url)) return 'failed'; // e.g. x-raw-image:///<hash>: Google has no URL
+        const policy = options.noReferrer ? 'no-referrer' : 'strict-origin-when-cross-origin';
+        const key = `${policy} ${url}`;
+        if (probes.has(key)) return probes.get(key);
+        probes.set(key, 'pending');
+        let img = null;
+        let poll = 0;
+        const settle = (state) => {
+            clearInterval(poll);
+            if (img) {
+                img.onload = null;
+                img.onerror = null;
+                if (state === 'ok') img.src = ''; // stop downloading once we know it is an image
+            }
+            if (probes.get(key) !== 'pending') return;
+            probes.set(key, state);
+            log('probe', state, url);
+            schedule();
+        };
+        const attempt = (retriesLeft) => {
+            if (probes.get(key) !== 'pending') return;
+            img = new Image();
+            img.onload = () => settle(img.naturalWidth > 0 ? 'ok' : 'failed');
+            img.onerror = () => {
+                clearInterval(poll);
+                if (retriesLeft > 0) setTimeout(() => attempt(retriesLeft - 1), PROBE_RETRY_MS);
+                else settle('failed');
+            };
+            img.referrerPolicy = policy;
+            img.src = url;
+            poll = setInterval(() => {
+                if (img.naturalWidth > 0) settle('ok');
+            }, PROBE_POLL_MS);
+        };
+        setTimeout(() => settle('ok'), PROBE_TIMEOUT_MS);
+        attempt(1);
+        return 'pending';
+    };
+
+    // View image once the original is confirmed to load. If it fails, offer Google's thumbnail under
+    // its own "View thumbnail" label, unless disabled; Search by image then also uses the thumbnail,
+    // which Lens accepts. While the check runs, no buttons are shown, so nothing points at a URL that
+    // turns out not to be an image.
+    const buttonsFor = (imageUrl, card) => {
+        const state = probeOriginal(imageUrl);
+        if (state === 'pending') return [];
+        const usable = state === 'ok';
+        const thumbnail = usable ? null : previewThumbnail(card);
+        const wanted = [];
+        if (usable) {
+            wanted.push({ role: 'view', text: options.viewImageText, href: imageUrl });
+        } else if (options.thumbnailFallback && thumbnail) {
+            wanted.push({ role: 'thumbnail', text: options.viewThumbnailText, href: thumbnail });
+        }
+        const searchSource = usable ? imageUrl : thumbnail;
+        if (options.showSearchByImage && searchSource) {
             wanted.push({
                 role: 'search',
                 text: options.searchByImageText,
-                href: `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imageUrl)}`,
+                href: `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(searchSource)}`,
             });
         }
         return wanted;
@@ -517,9 +606,14 @@ const ViewImageCore = (() => {
             log('original URL not resolved yet', preview.tbnid);
             return;
         }
+        const wanted = buttonsFor(imageUrl, preview.card);
+        if (!wanted.length) {
+            log('no usable image for', imageUrl);
+            return;
+        }
         const row = ensureRow(preview.visit);
         keep.add(row);
-        buttonsFor(imageUrl).forEach((want, index) => {
+        wanted.forEach((want, index) => {
             let button = row.children[index];
             const current = button && button.getAttribute(MARK) === want.role &&
                 button.getAttribute('href') === want.href && button.textContent.trim() === want.text &&
@@ -563,11 +657,14 @@ const ViewImageCore = (() => {
 
     const normalize = (raw) => ({
         ...raw,
+        thumbnailFallback: raw.thumbnailFallback !== false,
         viewImageText: String(raw.viewImageText || 'View image').trim(),
+        viewThumbnailText: String(raw.viewThumbnailText || 'View thumbnail').trim(),
         searchByImageText: String(raw.searchByImageText || 'Search by image').trim(),
     });
 
-    // options: { openInNewTab, noReferrer, showSearchByImage, viewImageText, searchByImageText, debug }
+    // options: { openInNewTab, noReferrer, showSearchByImage, thumbnailFallback, viewImageText,
+    //            viewThumbnailText, searchByImageText, debug }
     const start = (initialOptions) => {
         // Extension and userscript share the DOM; a second instance would fight over the buttons.
         if (document.documentElement.hasAttribute(`${MARK}-active`)) {
@@ -602,12 +699,13 @@ const ViewImageCore = (() => {
 })();
 
 (() => {
-    const labels = {"ca":{"view":"Mostra la imatge","search":"Cerca per imatge"},"cs":{"view":"Zobrazit obrázek","search":"Vyhledat podle obrázku"},"da":{"view":"Vis billede","search":"Søg efter billede"},"de":{"view":"Bild ansehen","search":"Zur \"Bildersuche\""},"en":{"view":"View image","search":"Search by image"},"es":{"view":"Ver imagen","search":"Buscar por imagen"},"fr":{"view":"Voir l'image","search":"Recherche par image"},"he":{"view":"הצג תמונה","search":"חפש לפי תמונה"},"hu":{"view":"Kép megtekintése","search":"Keresés kép alapján"},"it":{"view":"Visualizza immagine","search":"Ricerca tramite immagine"},"ja":{"view":"画像を表示","search":"画像を検索"},"ko":{"view":"이미지 보기","search":"이미지로 검색"},"nl":{"view":"Afbeelding weergeven","search":"Afbeelding zoeken"},"no":{"view":"Se bilde","search":"Søk med bilde"},"pl":{"view":"Pokaż obraz","search":"Wyszukaj obrazem"},"pt":{"view":"Ver imagem","search":"Pesquisar por imagem"},"pt-br":{"view":"Ver imagem","search":"Pesquisar por imagem"},"pt-pt":{"view":"Ver imagem","search":"Pesquisar por imagem"},"ru":{"view":"Открыть в полном размере","search":"Поиск по картинке"},"si":{"view":"පින්තුරය බලන්න","search":"පින්තුරය මගින් සෙවීම"},"sk":{"view":"Zobraziť obrázok","search":"Vyhľadať podľa obrázku"},"sl":{"view":"Ogled slike","search":"Iskanje s sliko"},"sv":{"view":"Visa originalbilden","search":"Fler storlekar"},"tr":{"view":"Resmi Görüntüle","search":"Görselle Ara"},"zh-cn":{"view":"查看图片","search":"以图搜图"},"zh-tw":{"view":"檢視圖片","search":"以圖搜圖"}};
+    const labels = {"ca":{"view":"Mostra la imatge","search":"Cerca per imatge"},"cs":{"view":"Zobrazit obrázek","search":"Vyhledat podle obrázku"},"da":{"view":"Vis billede","search":"Søg efter billede"},"de":{"view":"Bild ansehen","search":"Zur \"Bildersuche\""},"en":{"view":"View image","thumbnail":"View thumbnail","search":"Search by image"},"es":{"view":"Ver imagen","search":"Buscar por imagen"},"fr":{"view":"Voir l'image","search":"Recherche par image"},"he":{"view":"הצג תמונה","search":"חפש לפי תמונה"},"hu":{"view":"Kép megtekintése","search":"Keresés kép alapján"},"it":{"view":"Visualizza immagine","search":"Ricerca tramite immagine"},"ja":{"view":"画像を表示","search":"画像を検索"},"ko":{"view":"이미지 보기","search":"이미지로 검색"},"nl":{"view":"Afbeelding weergeven","search":"Afbeelding zoeken"},"no":{"view":"Se bilde","search":"Søk med bilde"},"pl":{"view":"Pokaż obraz","search":"Wyszukaj obrazem"},"pt":{"view":"Ver imagem","search":"Pesquisar por imagem"},"pt-br":{"view":"Ver imagem","search":"Pesquisar por imagem"},"pt-pt":{"view":"Ver imagem","search":"Pesquisar por imagem"},"ru":{"view":"Открыть в полном размере","search":"Поиск по картинке"},"si":{"view":"පින්තුරය බලන්න","search":"පින්තුරය මගින් සෙවීම"},"sk":{"view":"Zobraziť obrázok","search":"Vyhľadať podľa obrázku"},"sl":{"view":"Ogled slike","search":"Iskanje s sliko"},"sv":{"view":"Visa originalbilden","search":"Fler storlekar"},"tr":{"view":"Resmi Görüntüle","search":"Görselle Ara"},"zh-cn":{"view":"查看图片","search":"以图搜图"},"zh-tw":{"view":"檢視圖片","search":"以圖搜圖"}};
     const language = (navigator.language || 'en').toLowerCase();
     const label = labels[language] || labels[language.split('-')[0]] || labels.en;
     ViewImageCore.start({
         ...VIEW_IMAGE_SETTINGS,
         viewImageText: VIEW_IMAGE_SETTINGS.viewImageText || label.view || labels.en.view,
+        viewThumbnailText: VIEW_IMAGE_SETTINGS.viewThumbnailText || label.thumbnail || labels.en.thumbnail,
         searchByImageText: VIEW_IMAGE_SETTINGS.searchByImageText || label.search || labels.en.search,
     });
 })();
