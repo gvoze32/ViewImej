@@ -17,7 +17,10 @@
 const ViewImageCore = (() => {
     const MARK = 'data-viewimage';
     const THUMB_HOST = /^https?:\/\/(?:encrypted-tbn\d*|t\d*)\.gstatic\.com\//;
-    const GOOGLE_HOST = /(^|\.)google\.[a-z.]+$|(^|\.)gstatic\.com$|(^|\.)googleusercontent\.com$/;
+    // Links that stay inside Google Search itself ("See more", related searches, redirects). Any other
+    // page, including Google's own sites (Play, Blog, Arts & Culture, google.com/maps/about…), can be
+    // the source of an image.
+    const SEARCH_PATH = /^\/(?:search|url|imgres|goto|webhp)(?:[/?]|$)/;
     // Thumbnail id -> original image URL entry in Google's inline JSON (raw or JS-string escaped):
     //   [0,"<id>",["<thumbnail>",h,w],["<original>",h,w]
     const DATA_ENTRY = /\[0,\\*"([\w-]{6,})\\*",\[\\*"[^"]*",\d+,\d+\],\[\\*"(https?:[^"]*?)\\*",\d+,\d+\]/g;
@@ -140,18 +143,19 @@ const ViewImageCore = (() => {
         return ids.filter((id) => id && ID_PATTERN.test(id));
     };
 
-    const isExternalLink = (a) => {
+    const isSourceLink = (a) => {
         try {
             const url = new URL(a.href);
-            return /^https?:$/.test(url.protocol) && !GOOGLE_HOST.test(url.hostname);
+            if (!/^https?:$/.test(url.protocol)) return false;
+            return !(url.hostname === location.hostname && SEARCH_PATH.test(url.pathname));
         } catch {
             return false;
         }
     };
 
-    // The source-page button of a preview: an external link with an icon, a label and no image.
+    // The source-page button of a preview: a link out of Google Search with an icon, a label and no image.
     const isVisitButton = (a) =>
-        isExternalLink(a) && !a.querySelector('img') && a.querySelector('svg') !== null &&
+        isSourceLink(a) && !a.querySelector('img') && a.querySelector('svg') !== null &&
         a.textContent.trim().length > 0 && a.textContent.trim().length < 40 && !isOwn(a) && isVisible(a);
 
     const hasLargeImage = (el) => {
