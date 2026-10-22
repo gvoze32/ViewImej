@@ -52,14 +52,28 @@ one does nothing and logs a console warning.
 
 ### Chrome / Edge / Brave / Opera
 
-`chrome://extensions` → turn on Developer mode → **Load unpacked** → choose `dist/chrome`
-(or upload `dist/viewimej-chrome-<version>.zip` to the Chrome Web Store).
+Download `viewimej-chrome-<version>.zip` from [Releases](https://github.com/gvoze32/ViewImej/releases/latest)
+and unzip it, or build it yourself. Then open `chrome://extensions` → turn on Developer mode → **Load unpacked** →
+choose the unzipped folder (or `dist/chrome`).
 
 ### Firefox (140+)
 
 For a quick test, open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick
-`dist/firefox/manifest.json`. To install it permanently, sign
-`dist/viewimej-firefox-<version>.zip` on AMO (add-on id `viewimej@gvoze32`, set in `scripts/build.mjs`).
+`manifest.json` from the unzipped `viewimej-firefox-<version>.zip` (or `dist/firefox`). To install it
+permanently, sign the zip on AMO (add-on id `viewimej@gvoze32`, set in `scripts/build.mjs`).
+
+### Updates
+
+- **Userscript:** the manager checks `@updateURL` on its own; Tampermonkey checks every 24 hours by default.
+- **Extension loaded unpacked or from a zip:** the browser does not update it. Click **Check for updates**
+  in the popup. It compares the installed version with `package.json` on `main` and, when a newer version
+  exists, links to the latest release. Store installs (Chrome Web Store, AMO) are updated by the store.
+
+### Releasing
+
+1. Bump `version` in `package.json`, then run `npm run build`.
+2. Commit (including `userscript/viewimej.user.js`) and push to `main`.
+3. Run `gh release create v<version> dist/viewimej-*-<version>.zip userscript/viewimej.user.js`.
 
 ## Layout
 

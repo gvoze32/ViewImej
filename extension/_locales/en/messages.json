@@ -66,5 +66,37 @@
     "optionsButton": {
         "message": "Options",
         "description": "Text displayed on the link to options button."
+    },
+    "checkUpdates": {
+        "message": "Check for updates",
+        "description": "Popup button that checks GitHub for a newer version."
+    },
+    "checkingUpdates": {
+        "message": "Checking…",
+        "description": "Shown while the update check runs."
+    },
+    "upToDate": {
+        "message": "Up to date (v$VERSION$)",
+        "description": "Update check result: no newer version.",
+        "placeholders": {
+            "version": {
+                "content": "$1",
+                "example": "6.2.0"
+            }
+        }
+    },
+    "updateAvailable": {
+        "message": "Version $VERSION$ is available. Download",
+        "description": "Update check result: link to the latest GitHub release.",
+        "placeholders": {
+            "version": {
+                "content": "$1",
+                "example": "6.3.0"
+            }
+        }
+    },
+    "updateCheckFailed": {
+        "message": "Could not check for updates.",
+        "description": "Update check failed (offline, GitHub unreachable)."
     }
 }

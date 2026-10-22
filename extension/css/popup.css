@@ -75,3 +75,14 @@ body, div.paper, a {
                 color: #bfbfbf;
 }
 }
+
+#update-status a {
+    color: #3367d6;
+    text-decoration: underline!important;
+}
+
+@media (prefers-color-scheme: dark) {
+#update-status a {
+    color: #8ab4f8;
+}
+}

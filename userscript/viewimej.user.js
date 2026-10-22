@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            ViewImej
 // @namespace       https://github.com/gvoze32/ViewImej
-// @version         6.1.0
+// @version         6.2.0
 // @description     Re-implements the Google Images' "View image" and "Search by image" buttons, linking the original image (not the gstatic thumbnail).
 // @author          gvoze32 (ViewImej); based on View Image by Joshua B and ner00
 // @homepageURL     https://github.com/gvoze32/ViewImej
