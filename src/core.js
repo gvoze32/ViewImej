@@ -29,7 +29,7 @@ const ViewImageCore = (() => {
     let scheduled = false;
 
     const log = (...args) => {
-        if (options && options.debug) console.log('[ViewImage]', ...args);
+        if (options && options.debug) console.log('[ViewImej]', ...args);
     };
 
     const isOriginalUrl = (url) =>
@@ -351,7 +351,7 @@ const ViewImageCore = (() => {
     const start = (initialOptions) => {
         // Extension and userscript share the DOM; a second instance would fight over the buttons.
         if (document.documentElement.hasAttribute(`${MARK}-active`)) {
-            console.warn('[ViewImage] another View Image instance (extension or userscript) is already active; disable one of them.');
+            console.warn('[ViewImej] another ViewImej / View Image instance (extension or userscript) is already active; disable one of them.');
             return;
         }
         document.documentElement.setAttribute(`${MARK}-active`, '');

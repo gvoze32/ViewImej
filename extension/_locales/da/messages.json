@@ -5,7 +5,7 @@
    },
    "appName": {
       "description": "Title of the application, as displayed on the web store.",
-      "message": "Vis Billede"
+      "message": "ViewImej"
    },
    "optionsButton": {
       "description": "Text displayed on the link to options button.",
